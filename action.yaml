@@ -1,0 +1,67 @@
+name: "Create GitHub Release"
+description: "Creates a GitHub release using the RELEASE_NOTES file."
+author: "Frequenz Energy-as-a-Service GmbH"
+
+# Refer to the following link(s) for more information on inputs:
+# https://docs.github.com/en/actions/creating-actions/metadata-syntax-for-github-actions#inputs
+inputs:
+  release_notes_file:
+    description: >
+      The file name of the release notes file. It must exist in the repository.
+      The contents of this file will be used as the release notes.
+    required: false
+    default: "RELEASE_NOTES.md"
+  upload_files:
+    description: >
+      The files to be uploaded as release assets. It will be passed directly
+      using the shell, so it can be a glob pattern.
+
+      If empty, nothing will be uploaded.
+    required: false
+    default: ""
+  github_token:
+    description: >
+      The GitHub token to use for authentication. This is required to create
+      the release. It requires write permission.
+    required: false
+    default: ${{ github.token }}
+
+
+# Refer to the following link(s) for more information on the composite run steps:
+# https://docs.github.com/en/actions/creating-actions/metadata-syntax-for-github-actions#runs
+runs:
+  using: "composite"
+  steps:
+    - name: Download release notes
+      shell: bash
+      env:
+        REF: ${{ github.ref }}
+        REPOSITORY: ${{ github.repository }}
+        GH_TOKEN: ${{ inputs.github_token }}
+        RELEASE_NOTES_FILE: ${{ inputs.release_notes_file }}
+      run: |
+        set -ux
+        gh api \
+            -X GET \
+            -f ref=$REF \
+            -H "Accept: application/vnd.github.raw" \
+            "/repos/$REPOSITORY/contents/$RELEASE_NOTES_FILE" \
+          > RELEASE_NOTES.md
+
+    - name: Create GitHub release
+      shell: bash
+      env:
+        REF_NAME: ${{ github.ref_name }}
+        REPOSITORY: ${{ github.repository }}
+        GH_TOKEN: ${{ inputs.github_token }}
+      run: |
+        set -ux
+        extra_opts=
+        if echo "$REF_NAME" | grep -- -; then extra_opts=" --prerelease"; fi
+        gh release create \
+          -R "$REPOSITORY" \
+          --notes-file RELEASE_NOTES.md \
+          --generate-notes \
+          $extra_opts \
+          $REF_NAME \
+          ${{ inputs.upload_files }}
